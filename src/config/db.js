@@ -143,20 +143,29 @@ function getModel(name, opts = {}) {
 // create a proxy object for a model name that automatically classifies based on
 // the first argument passed to most mongoose static methods or when instantiating.
 function createProxy(name) {
-  const base = getModel(name); // default connection
+  // Defer model creation until a method/property is actually used. This
+  // prevents eager model compilation which can trigger Mongoose's
+  // "Schema hasn't been registered" errors when models reference each
+  // other (e.g., populate on a ref) and the referenced schema hasn't yet
+  // been registered. Use a lightweight proxy that resolves the concrete
+  // model on first access.
+  const base = {}; // empty target; real model resolved on demand
   const handler = {
-    get(target, prop) {
-      if (typeof target[prop] === 'function') {
-        return function (...args) {
-          const sample = args[0];
-          const m = getModel(name, { data: sample });
-          return m[prop](...args);
-        };
-      }
-      return target[prop];
+    get(_target, prop) {
+      // return a function that forwards to the real model's property
+      return function (...args) {
+        const sample = args[0];
+        const m = getModel(name, { data: sample });
+        const val = m[prop];
+        if (typeof val === 'function') return val.apply(m, args);
+        // if it's not a function, just return the value
+        return val;
+      };
     },
-    construct(target, args) {
+    construct(_target, args) {
       const m = getModel(name, { data: args[0] });
+      // instantiate the concrete model
+      // eslint-disable-next-line new-cap
       return new m(...args);
     },
   };

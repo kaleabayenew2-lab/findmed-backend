@@ -20,6 +20,39 @@ app.use(apiLimiter);
 
 app.use(express.json());
 
+// maintenance mode middleware: if enabled, reject all non-admin requests
+const adminController = require('./controllers/adminController');
+// cloudinary check (optional)
+let cloudinary = null;
+try {
+  cloudinary = require('./utils/cloudinary');
+  const cfg = cloudinary.config ? cloudinary.config() : {};
+  if (cfg && cfg.cloud_name) {
+    // ping the service to verify credentials
+    cloudinary.api.ping()
+      .then(() => console.log('Cloudinary: connection successful'))
+      .catch((e) => console.warn('Cloudinary: ping failed', e.message || e));
+  }
+} catch (e) {
+  // ignore if cloudinary not installed or not configured
+}
+
+app.use((req, res, next) => {
+  try {
+    const s = adminController.readSettings();
+    if (s && s.maintenanceMode === true) {
+      // allow admin endpoints to toggle off maintenance and health check
+      if (req.path.startsWith('/api/admin') || req.path === '/health') {
+        return next();
+      }
+      return res.status(503).json({ message: 'Server under maintenance' });
+    }
+  } catch (e) {
+    // ignore errors and proceed normally
+  }
+  next();
+});
+
 // simple health endpoint used by frontend connection checks
 app.get('/health', (req, res) => {
   res.status(200).json({ ok: true, ts: new Date().toISOString() });

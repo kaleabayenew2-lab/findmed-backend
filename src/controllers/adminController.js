@@ -101,6 +101,9 @@ exports.getSettings = (req, res) => {
   res.json(s);
 };
 
+// expose utility for other modules (e.g. maintenance middleware)
+exports.readSettings = readSettings;
+
 exports.updateSettings = (req, res) => {
   try {
     const updates = req.body || {};
@@ -108,8 +111,13 @@ exports.updateSettings = (req, res) => {
     const merged = Object.assign({}, current, updates);
     writeSettings(merged);
     try {
-      if (socketManager && socketManager.emitToAdmins) {
-        socketManager.emitToAdmins('settings_updated', merged);
+      if (socketManager) {
+        if (socketManager.emitToAdmins) {
+          socketManager.emitToAdmins('settings_updated', merged);
+        }
+        if (socketManager.emitToAll) {
+          socketManager.emitToAll('settings_updated', merged);
+        }
       }
     } catch (e) {}
     res.json(merged);

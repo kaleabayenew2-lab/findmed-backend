@@ -1,6 +1,8 @@
 const Facility = require('../models/facility');
 const bcrypt = require('bcryptjs');
 const serviceCatalog = require('../config/serviceCatalog');
+const cloudinary = require('../utils/cloudinary');
+const fs = require('fs');
 
 exports.list = async (req, res) => {
   try {
@@ -164,6 +166,93 @@ exports.rate = async (req, res) => {
     return res.json({ ok: true, ratingCount: f.ratingCount, averageRating: f.averageRating });
   } catch (err) {
     console.error('rate error', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// helpers for handling image uploads
+// (cloudinary and fs already imported above)
+
+
+async function maybeUploadToCloudinary(filePath) {
+  if (cloudinary && process.env.CLOUDINARY_CLOUD_NAME) {
+    try {
+      const result = await cloudinary.uploader.upload(filePath, {
+        folder: 'findmed/facilities'
+      });
+      return result.secure_url;
+    } catch (e) {
+      console.error('cloudinary upload failed', e);
+    } finally {
+      try { fs.unlinkSync(filePath); } catch (_) {}
+    }
+  }
+  // fallback: return undefined so caller may use local /uploads URL
+  return undefined;
+}
+
+// POST /api/facilities/:id/photo
+// multipart form data with `file` field. updates primary photoUrl.
+exports.uploadPhoto = async (req, res) => {
+  try {
+    const { id } = req.params;
+    let url;
+    // allow direct URL in body
+    if (!req.file && req.body && req.body.url) {
+      url = req.body.url;
+    } else {
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+      // try cloudinary if configured
+      url = await maybeUploadToCloudinary(req.file.path);
+      if (!url) {
+        // fallback to local uploads
+        const makeUrl = (req, filename) => {
+          const protocol = req.protocol;
+          const host = req.get('host');
+          return `${protocol}://${host}/uploads/${encodeURIComponent(filename)}`;
+        };
+        url = makeUrl(req, req.file.filename);
+      }
+    }
+    const query = { $or: [{ _id: id }, { agentId: id }] };
+    const f = await Facility.findOneAndUpdate(query, { photoUrl: url }, { new: true });
+    if (!f) return res.status(404).json({ error: 'Not found' });
+    return res.json({ ok: true, photoUrl: url, facility: f });
+  } catch (err) {
+    console.error('uploadPhoto error', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// POST /api/facilities/:id/photos
+// add an image to the album
+exports.addPhoto = async (req, res) => {
+  try {
+    const { id } = req.params;
+    let url;
+    if (!req.file && req.body && req.body.url) {
+      url = req.body.url;
+    } else {
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+      url = await maybeUploadToCloudinary(req.file.path);
+      if (!url) {
+        const makeUrl = (req, filename) => {
+          const protocol = req.protocol;
+          const host = req.get('host');
+          return `${protocol}://${host}/uploads/${encodeURIComponent(filename)}`;
+        };
+        url = makeUrl(req, req.file.filename);
+      }
+    }
+    const query = { $or: [{ _id: id }, { agentId: id }] };
+    const f = await Facility.findOne(query);
+    if (!f) return res.status(404).json({ error: 'Not found' });
+    f.photos = f.photos || [];
+    f.photos.push(url);
+    await f.save();
+    return res.json({ ok: true, url, facility: f });
+  } catch (err) {
+    console.error('addPhoto error', err);
     return res.status(500).json({ error: 'Server error' });
   }
 };

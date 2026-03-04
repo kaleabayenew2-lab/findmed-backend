@@ -25,6 +25,9 @@ const FacilitySchema = new mongoose.Schema({
   // Ownership: 'private' or 'public'
   ownership: { type: String, enum: ['private', 'public'], default: 'private' },
   notes: String,
+  // URLs for profile picture and additional album images
+  photoUrl: String,
+  photos: { type: [String], default: [] },
   isEmergency: { type: Boolean, default: false },
   isActive: { type: Boolean, default: true },
   // Usage statistics
