@@ -7,7 +7,7 @@ const path = require('path');
 
 const app = express();
 // Configure CORS to allow the frontend origin and credentials when required
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'https://admin-findmed.onrender.com';
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:3000';
 app.use(cors({ origin: FRONTEND_ORIGIN, credentials: true }));
 app.use(helmet());
 
@@ -20,23 +20,31 @@ app.use(apiLimiter);
 
 app.use(express.json());
 
-// maintenance mode middleware: if enabled, reject all non-admin requests
-const adminController = require('./controllers/adminController');
-// cloudinary check (optional)
-let cloudinary = null;
-try {
-  cloudinary = require('./utils/cloudinary');
-  const cfg = cloudinary.config ? cloudinary.config() : {};
-  if (cfg && cfg.cloud_name) {
-    // ping the service to verify credentials
-    cloudinary.api.ping()
-      .then(() => console.log('Cloudinary: connection successful'))
-      .catch((e) => console.warn('Cloudinary: ping failed', e.message || e));
-  }
-} catch (e) {
-  // ignore if cloudinary not installed or not configured
+// Allow both localhost and the Render admin frontend
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://admin-findmed.onrender.com'
+];
+
+// If FRONTEND_ORIGIN is set, add it to the allowed origins (if not already present)
+if (process.env.FRONTEND_ORIGIN && !allowedOrigins.includes(process.env.FRONTEND_ORIGIN)) {
+  allowedOrigins.push(process.env.FRONTEND_ORIGIN);
 }
 
+app.use(cors({
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true
+}));
+
+// maintenance mode middleware: if enabled, reject all non-admin requests
+const adminController = require('./controllers/adminController');
 app.use((req, res, next) => {
   try {
     const s = adminController.readSettings();
@@ -120,7 +128,7 @@ app.use('/api/uploads', uploadsRouter);
 
 const os = require('os');
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
 // support WebSocket (socket.io)
