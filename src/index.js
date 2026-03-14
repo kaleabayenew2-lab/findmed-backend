@@ -20,6 +20,29 @@ app.use(apiLimiter);
 
 app.use(express.json());
 
+// Allow both localhost and the Render admin frontend
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://admin-findmed.onrender.com'
+];
+
+// If FRONTEND_ORIGIN is set, add it to the allowed origins (if not already present)
+if (process.env.FRONTEND_ORIGIN && !allowedOrigins.includes(process.env.FRONTEND_ORIGIN)) {
+  allowedOrigins.push(process.env.FRONTEND_ORIGIN);
+}
+
+app.use(cors({
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true
+}));
+
 // maintenance mode middleware: if enabled, reject all non-admin requests
 const adminController = require('./controllers/adminController');
 app.use((req, res, next) => {
