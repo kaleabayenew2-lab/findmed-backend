@@ -6,12 +6,8 @@ const fs = require('fs');
 const path = require('path');
 
 const app = express();
-// Configure CORS to allow the frontend origin and credentials when required
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || [
-  "http://localhost:3000",
-  "https://admin-findmed.onrender.com"
-];
-app.use(cors({ origin: FRONTEND_ORIGIN, credentials: true }));
+// Configure CORS to allow all origins for API access
+app.use(cors({ origin: true, credentials: true }));
 app.use(helmet());
 
 // basic rate limiter
