@@ -35,8 +35,8 @@ exports.list = async (req, res) => {
     const facilities = await Facility.find(query).limit(100);
     return res.json(facilities);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    console.error('Facilities list error:', err);
+    res.status(500).json({ error: 'Server error', details: err.message });
   }
 };
 
