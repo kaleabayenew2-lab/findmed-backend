@@ -101,6 +101,10 @@ app.use('/uploads', express.static(uploadsDir));
 const facilitiesRouter = require('./routes/facilities');
 app.use('/api/facilities', facilitiesRouter);
 
+// Public settings endpoint for mobile app
+const adminController = require('./controllers/adminController');
+app.get('/api/settings', adminController.getSettings);
+
 const adminRouter = require('./routes/admin');
 app.use('/api/admin', adminRouter);
 
