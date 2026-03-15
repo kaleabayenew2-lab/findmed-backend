@@ -73,6 +73,16 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({ ok: true, ts: new Date().toISOString() });
 });
 
+// Public settings endpoint for mobile app
+app.get('/api/settings', (req, res) => {
+  try {
+    const s = adminController.readSettings();
+    res.json({ businessMode: !!s.businessMode });
+  } catch (e) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // simple CSRF token endpoint (dev-friendly): returns a token and sets a non-httpOnly cookie
 app.get('/api/csrf-token', (req, res) => {
   try {
