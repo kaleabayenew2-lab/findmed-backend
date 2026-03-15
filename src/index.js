@@ -112,6 +112,9 @@ app.use('/api/telegram', telegramRouter);
 const feedbackRouter = require('./routes/feedback');
 app.use('/api/feedback', feedbackRouter);
 
+const bookingsRouter = require('./routes/bookings');
+app.use('/api/bookings', bookingsRouter);
+
 const notificationsRouter = require('./routes/notifications');
 app.use('/api/notifications', notificationsRouter);
 

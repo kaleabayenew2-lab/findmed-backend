@@ -77,8 +77,11 @@ function readSettings() {
       appName: 'FindMed',
       mapProvider: 'google',
       defaultLanguage: 'en',
-      maintenanceMode: false,      maintenanceModeTelegram: false,
-      maintenanceModeMobile: false,      backupIntervalDays: 7,
+      maintenanceMode: false,
+      maintenanceModeTelegram: false,
+      maintenanceModeMobile: false,
+      businessMode: false,
+      backupIntervalDays: 7,
       // feature flags / toggles
       darkMode: false,
       multiLanguage: false,
