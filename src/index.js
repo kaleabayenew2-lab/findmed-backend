@@ -41,7 +41,7 @@ app.use((req, res, next) => {
     const s = adminController.readSettings();
     if (s && s.maintenanceMode === true) {
       // allow admin endpoints to toggle off maintenance and health check
-      if (req.path.startsWith('/api/admin') || req.path === '/health') {
+      if (req.path.startsWith('/api/admin') || req.path === '/api/health') {
         return next();
       }
       return res.status(503).json({ message: 'Server under maintenance' });
@@ -53,7 +53,7 @@ app.use((req, res, next) => {
 });
 
 // simple health endpoint used by frontend connection checks
-app.get('/health', (req, res) => {
+app.get('/api/health', (req, res) => {
   res.status(200).json({ ok: true, ts: new Date().toISOString() });
 });
 
