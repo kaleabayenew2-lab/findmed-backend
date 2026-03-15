@@ -547,10 +547,10 @@ exports.removeSavedFacility = async (req, res) => {
     }
   };
 
-// Admin: list only users who requested admin reset
+// Admin: list all users
 exports.listUsers = async (req, res) => {
   try {
-    const users = await User.find({ adminResetRequested: true }, 'fullName email phone roles isActive createdAt userId systemId telegramChatId telegramUsername');
+    const users = await User.find({}, 'fullName email phone roles isActive createdAt userId systemId telegramChatId telegramUsername');
     return res.json({ users });
   } catch (err) {
     console.error('listUsers error', err);
