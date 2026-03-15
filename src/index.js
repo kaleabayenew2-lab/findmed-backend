@@ -6,18 +6,6 @@ const fs = require('fs');
 const path = require('path');
 
 const app = express();
-// Configure CORS to allow specific origins for API access
-app.use(cors({ origin: allowedOrigins, credentials: true }));
-app.use(helmet());
-
-// basic rate limiter
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per window
-});
-app.use(apiLimiter);
-
-app.use(express.json());
 
 // Allow both localhost and the Render admin frontend
 const allowedOrigins = [
@@ -29,6 +17,10 @@ const allowedOrigins = [
 if (process.env.FRONTEND_ORIGIN && !allowedOrigins.includes(process.env.FRONTEND_ORIGIN)) {
   allowedOrigins.push(process.env.FRONTEND_ORIGIN);
 }
+
+// Configure CORS to allow specific origins for API access
+app.use(cors({ origin: allowedOrigins, credentials: true }));
+app.use(helmet());
 
 app.use(cors({
   origin: function(origin, callback) {
