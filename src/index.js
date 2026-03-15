@@ -41,12 +41,26 @@ const adminController = require('./controllers/adminController');
 app.use((req, res, next) => {
   try {
     const s = adminController.readSettings();
-    if (s && s.maintenanceMode === true) {
-      // allow admin endpoints to toggle off maintenance and health check
-      if (req.path.startsWith('/api/admin') || req.path === '/api/health') {
-        return next();
+    if (s) {
+      // Check global maintenance mode
+      if (s.maintenanceMode === true) {
+        // allow admin endpoints to toggle off maintenance and health check
+        if (req.path.startsWith('/api/admin') || req.path === '/api/health' || req.path === '/api/csrf-token') {
+          return next();
+        }
+        return res.status(503).json({ message: 'Server under maintenance' });
       }
-      return res.status(503).json({ message: 'Server under maintenance' });
+      // Check individual maintenance modes
+      if (s.maintenanceModeFacilities === true && req.path.startsWith('/api/facilities')) {
+        return res.status(503).json({ message: 'Facilities service under maintenance' });
+      }
+      if (s.maintenanceModeTelegram === true && req.path.startsWith('/api/telegram')) {
+        return res.status(503).json({ message: 'Telegram service under maintenance' });
+      }
+      // For mobile, perhaps check /api/users or other mobile-specific routes
+      if (s.maintenanceModeMobile === true && (req.path.startsWith('/api/users') || req.path.startsWith('/api/feedback'))) {
+        return res.status(503).json({ message: 'Mobile service under maintenance' });
+      }
     }
   } catch (e) {
     // ignore errors and proceed normally
