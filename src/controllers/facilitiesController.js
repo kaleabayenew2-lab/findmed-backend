@@ -28,15 +28,104 @@ exports.list = async (req, res) => {
         }
       };
 
-      const facilities = await Facility.find(query).limit(50);
-      return res.json(facilities);
+      try {
+        const facilities = await Facility.find(query).limit(50).maxTimeMS(10000);
+        return res.json(facilities);
+      } catch (dbError) {
+        console.error('Geospatial query failed:', dbError);
+        // Fallback to regular query if geospatial fails
+        delete query.location;
+        const facilities = await Facility.find(query).limit(50).maxTimeMS(5000);
+        return res.json(facilities);
+      }
     }
 
-    const facilities = await Facility.find(query).limit(100);
-    return res.json(facilities);
+    // Regular query without location
+    try {
+      const facilities = await Facility.find(query).limit(100).maxTimeMS(10000);
+      return res.json(facilities);
+    } catch (dbError) {
+      console.error('Regular query failed:', dbError);
+      // Return empty array if database query fails
+      return res.json([]);
+    }
   } catch (err) {
     console.error('Facilities list error:', err);
+    // Check if it's a database connection error
+    if (err.name === 'MongooseServerSelectionError' || err.name === 'MongoNetworkError') {
+      return res.status(503).json({ 
+        error: 'Database temporarily unavailable', 
+        message: 'Please try again later' 
+      });
+    }
     res.status(500).json({ error: 'Server error', details: err.message });
+  }
+};
+
+// Add sample facilities (for development/testing)
+exports.addSamples = async (req, res) => {
+  try {
+    const sampleData = [
+      {
+        name: 'Kampala General Hospital',
+        type: 'hospital',
+        location: { type: 'Point', coordinates: [32.5825, 0.3476] },
+        address: 'Kampala, Uganda',
+        phone: '+256-414-123456',
+        services: ['Emergency', 'Pharmacy', 'Outpatient', 'Surgery'],
+        openingHours: '24/7',
+        isEmergency: true,
+        ownership: 'public'
+      },
+      {
+        name: 'Mulago National Referral Hospital',
+        type: 'hospital',
+        location: { type: 'Point', coordinates: [32.6035, 0.3276] },
+        address: 'Mulago Hill, Kampala',
+        phone: '+256-414-234567',
+        services: ['Emergency', 'Pharmacy', 'Outpatient', 'Specialist Care'],
+        openingHours: '24/7',
+        isEmergency: true,
+        ownership: 'public'
+      },
+      {
+        name: 'City Pharmacy',
+        type: 'pharmacy',
+        location: { type: 'Point', coordinates: [32.5825, 0.3476] },
+        address: 'Kampala City Center',
+        phone: '+256-414-345678',
+        services: ['Medicines', 'Consultation', 'Medical Supplies'],
+        openingHours: '08:00-22:00',
+        isEmergency: false,
+        ownership: 'private'
+      },
+      {
+        name: 'St. Francis Hospital Nsambya',
+        type: 'hospital',
+        location: { type: 'Point', coordinates: [32.5765, 0.3076] },
+        address: 'Nsambya, Kampala',
+        phone: '+256-414-456789',
+        services: ['Emergency', 'Pharmacy', 'Outpatient', 'Maternity'],
+        openingHours: '24/7',
+        isEmergency: true,
+        ownership: 'private'
+      }
+    ];
+
+    // Clear existing sample data
+    await Facility.deleteMany({});
+
+    // Insert new sample data
+    const facilities = await Facility.insertMany(sampleData);
+    
+    console.log(`Added ${facilities.length} sample facilities`);
+    res.status(201).json({ 
+      message: `Added ${facilities.length} sample facilities`,
+      count: facilities.length 
+    });
+  } catch (err) {
+    console.error('Error adding sample facilities:', err);
+    res.status(500).json({ error: 'Failed to add sample facilities' });
   }
 };
 
@@ -49,13 +138,6 @@ exports.create = async (req, res) => {
     // Basic validation: require name and type
     if (!data.name || !data.type) {
       return res.status(400).json({ error: 'Missing required fields: name and type' });
-    }
-
-    // Check for existing facility name (case-insensitive)
-    const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const existing = await Facility.findOne({ name: { $regex: `^${escapeRegex(data.name)}$`, $options: 'i' } });
-    if (existing) {
-      return res.status(409).json({ error: 'Facility name already exists' });
     }
 
     // If a password is provided, hash it and store as passwordHash

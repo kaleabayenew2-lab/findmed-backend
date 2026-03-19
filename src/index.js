@@ -17,7 +17,12 @@ const allowedOrigins = [
   'http://localhost:60000',
   'http://localhost:65000',
   'http://localhost:70000',
-  'https://admin-findmed.onrender.com'
+  'https://admin-findmed.onrender.com',
+  // Add Flutter web origins
+  'http://localhost:3000',
+  'https://localhost:3000',
+  'http://127.0.0.1:3000',
+  'https://127.0.0.1:3000'
 ];
 
 // If FRONTEND_ORIGIN is set, add it to the allowed origins (if not already present)
