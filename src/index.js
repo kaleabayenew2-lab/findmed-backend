@@ -12,6 +12,11 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
   'http://localhost:3002',
+  'http://localhost:50000',
+  'http://localhost:55000',
+  'http://localhost:60000',
+  'http://localhost:65000',
+  'http://localhost:70000',
   'https://admin-findmed.onrender.com'
 ];
 
