@@ -3,6 +3,8 @@ const bcrypt = require('bcryptjs');
 const serviceCatalog = require('../config/serviceCatalog');
 
 exports.list = async (req, res) => {
+  console.log('Facilities list request received:', req.query);
+  
   try {
     const { lat, lng, radius = 5000, type, page = 1, limit = 20 } = req.query;
     const query = {};
@@ -15,6 +17,45 @@ exports.list = async (req, res) => {
     const pageNum = parseInt(page, 10) || 1;
     const limitNum = Math.min(parseInt(limit, 10) || 20, 100); // Max 100 per page
     const skip = (pageNum - 1) * limitNum;
+
+    console.log('Query parameters:', { pageNum, limitNum, skip, maxDistance, type, query });
+
+    // Try a simple query first without geospatial
+    try {
+      const facilities = await Facility.find(query)
+        .skip(skip)
+        .limit(limitNum)
+        .maxTimeMS(5000);
+      
+      const total = await Facility.countDocuments(query);
+      
+      console.log('Query successful, found facilities:', facilities.length);
+      
+      return res.json({
+        data: facilities,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total: total,
+          pages: Math.ceil(total / limitNum),
+          hasMore: skip + facilities.length < total
+        }
+      });
+    } catch (dbError) {
+      console.error('Database query failed:', dbError);
+      
+      // Return empty result on database error
+      return res.json({
+        data: [],
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total: 0,
+          pages: 0,
+          hasMore: false
+        }
+      });
+    }
 
     // If lat and lng are provided, validate and perform a geospatial near query
     if (lat !== undefined && lng !== undefined) {
@@ -37,7 +78,6 @@ exports.list = async (req, res) => {
           .limit(limitNum)
           .maxTimeMS(10000);
         
-        // Get total count for pagination
         const total = await Facility.countDocuments(query);
         
         return res.json({
@@ -50,8 +90,8 @@ exports.list = async (req, res) => {
             hasMore: skip + facilities.length < total
           }
         });
-      } catch (dbError) {
-        console.error('Geospatial query failed:', dbError);
+      } catch (geoError) {
+        console.error('Geospatial query failed:', geoError);
         // Fallback to regular query if geospatial fails
         delete query.location;
         const facilities = await Facility.find(query)
@@ -73,40 +113,6 @@ exports.list = async (req, res) => {
         });
       }
     }
-
-    // Regular query without location
-    try {
-      const facilities = await Facility.find(query)
-        .skip(skip)
-        .limit(limitNum)
-        .maxTimeMS(10000);
-      
-      const total = await Facility.countDocuments(query);
-      
-      return res.json({
-        data: facilities,
-        pagination: {
-          page: pageNum,
-          limit: limitNum,
-          total: total,
-          pages: Math.ceil(total / limitNum),
-          hasMore: skip + facilities.length < total
-        }
-      });
-    } catch (dbError) {
-      console.error('Regular query failed:', dbError);
-      // Return empty array if database query fails
-      return res.json({
-        data: [],
-        pagination: {
-          page: pageNum,
-          limit: limitNum,
-          total: 0,
-          pages: 0,
-          hasMore: false
-        }
-      });
-    }
   } catch (err) {
     console.error('Facilities list error:', err);
     // Check if it's a database connection error
@@ -120,7 +126,29 @@ exports.list = async (req, res) => {
   }
 };
 
-// Add sample facilities (for development/testing)
+// Test database connection
+exports.testDb = async (req, res) => {
+  try {
+    console.log('Testing database connection...');
+    const testCount = await Facility.countDocuments();
+    console.log('Database connection successful. Total facilities:', testCount);
+    
+    res.json({
+      status: 'success',
+      message: 'Database connection working',
+      totalFacilities: testCount,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Database connection test failed:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Database connection failed',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+};
 exports.addSamples = async (req, res) => {
   try {
     const sampleData = [

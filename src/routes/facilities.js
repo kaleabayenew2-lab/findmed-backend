@@ -5,6 +5,7 @@ const controller = require('../controllers/facilitiesController');
 router.get('/', controller.list);
 router.get('/catalog', controller.catalog);
 router.get('/check-name', controller.checkName);
+router.get('/test-db', controller.testDb);
 router.post('/add-samples', controller.addSamples);
 router.post('/:id/reset-password', controller.resetPassword);
 router.post('/', controller.create);
