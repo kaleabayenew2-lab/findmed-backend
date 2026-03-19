@@ -126,6 +126,26 @@ exports.list = async (req, res) => {
   }
 };
 
+// Simple test endpoint
+exports.simpleTest = async (req, res) => {
+  try {
+    console.log('Simple test endpoint called');
+    
+    // Test basic response
+    res.json({
+      message: 'Backend is working',
+      timestamp: new Date().toISOString(),
+      test: 'success'
+    });
+  } catch (error) {
+    console.error('Simple test failed:', error);
+    res.status(500).json({
+      error: 'Simple test failed',
+      details: error.message
+    });
+  }
+};
+
 // Test database connection
 exports.testDb = async (req, res) => {
   try {
