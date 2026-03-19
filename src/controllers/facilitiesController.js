@@ -4,7 +4,7 @@ const serviceCatalog = require('../config/serviceCatalog');
 
 exports.list = async (req, res) => {
   try {
-    const { lat, lng, radius = 5000, type } = req.query;
+    const { lat, lng, radius = 5000, type, page = 1, limit = 20 } = req.query;
     const query = {};
 
     if (type) {
@@ -12,6 +12,9 @@ exports.list = async (req, res) => {
     }
 
     const maxDistance = parseInt(radius, 10) || 5000;
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = Math.min(parseInt(limit, 10) || 20, 100); // Max 100 per page
+    const skip = (pageNum - 1) * limitNum;
 
     // If lat and lng are provided, validate and perform a geospatial near query
     if (lat !== undefined && lng !== undefined) {
@@ -29,25 +32,80 @@ exports.list = async (req, res) => {
       };
 
       try {
-        const facilities = await Facility.find(query).limit(50).maxTimeMS(10000);
-        return res.json(facilities);
+        const facilities = await Facility.find(query)
+          .skip(skip)
+          .limit(limitNum)
+          .maxTimeMS(10000);
+        
+        // Get total count for pagination
+        const total = await Facility.countDocuments(query);
+        
+        return res.json({
+          data: facilities,
+          pagination: {
+            page: pageNum,
+            limit: limitNum,
+            total: total,
+            pages: Math.ceil(total / limitNum),
+            hasMore: skip + facilities.length < total
+          }
+        });
       } catch (dbError) {
         console.error('Geospatial query failed:', dbError);
         // Fallback to regular query if geospatial fails
         delete query.location;
-        const facilities = await Facility.find(query).limit(50).maxTimeMS(5000);
-        return res.json(facilities);
+        const facilities = await Facility.find(query)
+          .skip(skip)
+          .limit(limitNum)
+          .maxTimeMS(5000);
+        
+        const total = await Facility.countDocuments(query);
+        
+        return res.json({
+          data: facilities,
+          pagination: {
+            page: pageNum,
+            limit: limitNum,
+            total: total,
+            pages: Math.ceil(total / limitNum),
+            hasMore: skip + facilities.length < total
+          }
+        });
       }
     }
 
     // Regular query without location
     try {
-      const facilities = await Facility.find(query).limit(100).maxTimeMS(10000);
-      return res.json(facilities);
+      const facilities = await Facility.find(query)
+        .skip(skip)
+        .limit(limitNum)
+        .maxTimeMS(10000);
+      
+      const total = await Facility.countDocuments(query);
+      
+      return res.json({
+        data: facilities,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total: total,
+          pages: Math.ceil(total / limitNum),
+          hasMore: skip + facilities.length < total
+        }
+      });
     } catch (dbError) {
       console.error('Regular query failed:', dbError);
       // Return empty array if database query fails
-      return res.json([]);
+      return res.json({
+        data: [],
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total: 0,
+          pages: 0,
+          hasMore: false
+        }
+      });
     }
   } catch (err) {
     console.error('Facilities list error:', err);
