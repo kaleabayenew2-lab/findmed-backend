@@ -38,6 +38,17 @@ if (process.env.FRONTEND_ORIGIN && !allowedOrigins.includes(process.env.FRONTEND
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(helmet());
 
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+const limiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 300, // 300 requests per minute per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use(limiter);
+
 app.use(cors({
   origin: function(origin, callback) {
     // Allow requests with no origin (like mobile apps or curl)
