@@ -127,7 +127,9 @@ app.use('/api/uploads', uploadsRouter);
 
 const os = require('os');
 
-const PORT = process.env.PORT || 3000;
+// Use dynamic port allocation to avoid EADDRINUSE errors
+// Try PORT env var, then fallback to 3001, 3002, 3003, etc.
+let PORT = parseInt(process.env.PORT || '3001', 10);
 const HOST = process.env.HOST || '0.0.0.0';
 
 // support WebSocket (socket.io)
@@ -196,6 +198,17 @@ function logNetworkInterfaces() {
     console.warn('Could not enumerate network interfaces:', err);
   }
 }
+
+// Handle port in use error and try next port
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.warn(`Port ${PORT} is in use, trying next port...`);
+    PORT++;
+    server.listen(PORT, HOST);
+  } else {
+    throw err;
+  }
+});
 
 server.listen(PORT, HOST, () => {
   console.log(`Server running on ${HOST}:${PORT}`);
