@@ -30,9 +30,14 @@ exports.checkTelegramChatId = async (req, res) => {
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const axios = require('axios');
 const User = require('../models/user');
 const TelegramContact = require('../models/telegramContact');
+const apiService = require('../services/apiService');
+const logger = require('../utils/logger');
+const errorHandler = require('../utils/errorHandler');
+
+const CONTEXT = 'UsersController';
+
 // When true (set DEV_RETURN_OTP=true in env), backend will include the OTP
 // in the JSON response to aid local/dev testing. Do NOT enable in production.
 const DEV_RETURN_OTP = (process.env.DEV_RETURN_OTP || 'false') === 'true';
@@ -58,32 +63,42 @@ async function ensureUniqueIds() {
 
 exports.register = async (req, res) => {
   try {
-
     const { fullName, email, password, phone, age, provider, idToken } = req.body;
 
     let resolvedEmail = email;
     let resolvedName = fullName;
 
-    // If using Google provider, verify ID token with Google
+    // If using Google provider, verify ID token with Google using modern API service
     if (provider === 'google') {
-      if (!idToken) return res.status(400).json({ message: 'Missing idToken for Google sign-in' });
-      // Verify token
-      const verifyUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`;
-      const verifyRes = await axios.get(verifyUrl).catch((e) => null);
-      if (!verifyRes || !verifyRes.data || !verifyRes.data.email) {
+      if (!idToken) {
+        logger.warn(CONTEXT, 'Missing idToken for Google sign-in');
+        return res.status(400).json({ message: 'Missing idToken for Google sign-in' });
+      }
+
+      // Use centralized API service with retry logic and error handling
+      const googleVerifyResult = await apiService.verifyGoogleToken(idToken);
+      if (!googleVerifyResult.success) {
+        logger.warn(CONTEXT, 'Google token verification failed', {
+          error: googleVerifyResult.error?.error?.message
+        });
         return res.status(400).json({ message: 'Invalid Google ID token' });
       }
-      resolvedEmail = verifyRes.data.email.toLowerCase();
-      resolvedName = resolvedName || verifyRes.data.name || verifyRes.data.email.split('@')[0];
+
+      resolvedEmail = googleVerifyResult.data.email.toLowerCase();
+      resolvedName = resolvedName || googleVerifyResult.data.email.split('@')[0];
     }
 
     if (!resolvedName || !resolvedEmail || (!password && !provider)) {
+      logger.warn(CONTEXT, 'Missing required fields for registration', { provider });
       return res.status(400).json({ message: 'Missing required fields' });
     }
 
     const emailLower = resolvedEmail.toLowerCase();
     const existing = await User.findOne({ email: emailLower });
-    if (existing) return res.status(409).json({ message: 'Email already registered' });
+    if (existing) {
+      logger.warn(CONTEXT, 'Email already registered', { email: emailLower });
+      return res.status(409).json({ message: 'Email already registered' });
+    }
 
     // If phone provided, validate Ethiopian E.164 format and check for existing phone to avoid duplicate-key DB error
     if (phone) {
@@ -148,19 +163,28 @@ exports.login = async (req, res) => {
 
     // Social/provider login
     if (provider === 'google') {
-      if (!idToken) return res.status(400).json({ message: 'Missing idToken for Google login' });
-      const verifyUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`;
-      const verifyRes = await axios.get(verifyUrl).catch((e) => null);
-      if (!verifyRes || !verifyRes.data || !verifyRes.data.email) {
+      if (!idToken) {
+        logger.warn(CONTEXT, 'Missing idToken for Google login');
+        return res.status(400).json({ message: 'Missing idToken for Google login' });
+      }
+
+      // Use centralized API service with retry logic for Google token verification
+      const googleVerifyResult = await apiService.verifyGoogleToken(idToken);
+      if (!googleVerifyResult.success) {
+        logger.warn(CONTEXT, 'Google token verification failed during login', {
+          error: googleVerifyResult.error?.error?.message
+        });
         return res.status(400).json({ message: 'Invalid Google ID token' });
       }
-      const emailLower = verifyRes.data.email.toLowerCase();
-      // find or create user
+
+      const emailLower = googleVerifyResult.data.email.toLowerCase();
+
+      // Find or create user
       let u = await User.findOne({ email: emailLower });
       if (!u) {
         const { systemId, userId } = await ensureUniqueIds();
         u = new User({
-          fullName: verifyRes.data.name || emailLower.split('@')[0],
+          fullName: googleVerifyResult.data.email.split('@')[0],
           email: emailLower,
           passwordHash: 'SOCIAL',
           provider: 'google',
@@ -168,10 +192,23 @@ exports.login = async (req, res) => {
           userId
         });
         await u.save();
+        logger.info(CONTEXT, 'New user created via Google OAuth', { email: emailLower });
       }
+
       const secret = process.env.JWT_SECRET || 'dev_secret';
       const token = jwt.sign({ id: u._id, systemId: u.systemId }, secret, { expiresIn: '30d' });
-      return res.json({ id: u._id, fullName: u.fullName, email: u.email, phone: u.phone, age: u.age, systemId: u.systemId, userId: u.userId, provider: u.provider, token });
+      logger.info(CONTEXT, 'User logged in via Google', { email: emailLower });
+      return res.json({
+        id: u._id,
+        fullName: u.fullName,
+        email: u.email,
+        phone: u.phone,
+        age: u.age,
+        systemId: u.systemId,
+        userId: u.userId,
+        provider: u.provider,
+        token
+      });
     }
 
     // Email/password login
@@ -373,13 +410,17 @@ exports.requestLoginOtp = async (req, res) => {
     user.loginOtpExpires = expires;
     await user.save();
 
-    const BOT_API_BASE = process.env.BOT_API_BASE || 'http://localhost:3001';
+    // Send OTP via Telegram using centralized API service with retry logic
     if (user.telegramChatId) {
       try {
         const text = `Your FindMed login code is: ${otp}. It expires in 15 minutes.`;
-        const botResp = await axios.post(`${BOT_API_BASE}/send`, { chatId: user.telegramChatId, text }, { timeout: 5000 }).catch(e => ({ error: e }));
-        if (botResp && botResp.error) {
-          console.warn('Failed to send login OTP via bot (request error):', botResp.error && botResp.error.message ? botResp.error.message : botResp.error);
+        const telegramResult = await apiService.sendTelegramMessage(user.telegramChatId, text);
+
+        if (!telegramResult.success) {
+          logger.warn(CONTEXT, 'Failed to send login OTP via Telegram', {
+            userId: user._id,
+            error: telegramResult.error?.error?.message
+          });
           return res.json({ ok: false, via: 'telegram', message: 'Failed to send via Telegram' });
         }
         const data = botResp && botResp.data ? botResp.data : null;
@@ -634,15 +675,24 @@ exports.requestReset = async (req, res) => {
     u.resetOtpExpires = expires;
     await u.save();
 
-    // Try to send OTP via Telegram bot HTTP API if available
-    const BOT_API_BASE = process.env.BOT_API_BASE || 'http://localhost:3001';
-    if (u.telegramChatId) {
-      try {
-        const text = `Your FindMed password reset code is: ${otp}. It expires in 30 minutes.`;
-        const botResp = await axios.post(`${BOT_API_BASE}/send`, { chatId: u.telegramChatId, text }, { timeout: 5000 }).catch(e => ({ error: e }));
-        if (botResp && botResp.error) {
-          console.warn('Failed to send OTP via bot (request error):', botResp.error && botResp.error.message ? botResp.error.message : botResp.error);
-          return res.json({ ok: false, via: 'telegram', telegramChatId: u.telegramChatId, telegramUsername: u.telegramUsername || null, message: `Failed to send via Telegram: ${botResp.error.message || 'request failed'}` });
+  // Try to send OTP via Telegram using centralized API service with retry logic
+  if (u.telegramChatId) {
+    try {
+      const text = `Your FindMed password reset code is: ${otp}. It expires in 30 minutes.`;
+      const telegramResult = await apiService.sendTelegramMessage(u.telegramChatId, text);
+
+      if (!telegramResult.success) {
+        logger.warn(CONTEXT, 'Failed to send password reset OTP via Telegram', {
+          userId: u._id,
+          error: telegramResult.error?.error?.message
+        });
+        return res.json({
+          ok: false,
+          via: 'telegram',
+          telegramChatId: u.telegramChatId,
+          telegramUsername: u.telegramUsername || null,
+          message: 'Failed to send via Telegram'
+        });
         }
         const data = botResp && botResp.data ? botResp.data : null;
         if (data && data.ok) {
